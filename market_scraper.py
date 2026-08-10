@@ -1,8 +1,8 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 
 import time
 
@@ -11,21 +11,20 @@ def create_driver():
 
     options = Options()
 
-    # Streamlit Cloud needs headless mode
+    # Streamlit Cloud settings
     options.add_argument("--headless=new")
-
     options.add_argument("--no-sandbox")
-
     options.add_argument("--disable-dev-shm-usage")
-
     options.add_argument("--disable-gpu")
-
     options.add_argument("--window-size=1920,1080")
+
+    # Cloud Chromium location
+    options.binary_location = "/usr/bin/chromium"
 
 
     driver = webdriver.Chrome(
         service=Service(
-            ChromeDriverManager().install()
+            "/usr/bin/chromedriver"
         ),
         options=options
     )
@@ -36,28 +35,33 @@ def create_driver():
 
 def convert_turnover(value):
 
-    value = value.replace(",", "")
+    value = value.replace(",", "").strip()
+
 
     if value.endswith("B"):
 
         return float(value[:-1]) * 1_000_000_000
 
 
-    if value.endswith("M"):
+    elif value.endswith("M"):
 
         return float(value[:-1]) * 1_000_000
 
 
-    if value.endswith("K"):
+    elif value.endswith("K"):
 
         return float(value[:-1]) * 1_000
 
 
-    return float(value)
+    else:
+
+        return float(value)
 
 
 
 def get_market_turnover(stock_code):
+
+    stock_code = str(stock_code)
 
 
     url = (
@@ -77,8 +81,13 @@ def get_market_turnover(stock_code):
         time.sleep(8)
 
 
+
+        # -------------------------
+        # Find visible search box
+        # -------------------------
+
         boxes = driver.find_elements(
-            "id",
+            By.ID,
             "tags"
         )
 
@@ -91,7 +100,6 @@ def get_market_turnover(stock_code):
             if box.is_displayed():
 
                 search_box = box
-
                 break
 
 
@@ -99,17 +107,33 @@ def get_market_turnover(stock_code):
         if search_box is None:
 
             raise Exception(
-                "Search box not found"
+                "HKEX search box not found"
             )
 
+
+
+        # -------------------------
+        # Enter stock code
+        # Using JS because HKEX
+        # blocks normal send_keys
+        # -------------------------
 
         driver.execute_script(
             """
             arguments[0].value = arguments[1];
 
             arguments[0].dispatchEvent(
-                new Event('input',
-                {bubbles:true})
+                new Event(
+                    'input',
+                    {bubbles:true}
+                )
+            );
+
+            arguments[0].dispatchEvent(
+                new Event(
+                    'change',
+                    {bubbles:true}
+                )
             );
             """,
             search_box,
@@ -121,8 +145,12 @@ def get_market_turnover(stock_code):
 
 
 
+        # -------------------------
+        # Click apply filter
+        # -------------------------
+
         buttons = driver.find_elements(
-            "class name",
+            By.CLASS_NAME,
             "etps_apply_btn"
         )
 
@@ -135,8 +163,15 @@ def get_market_turnover(stock_code):
             if button.is_displayed():
 
                 apply_button = button
-
                 break
+
+
+
+        if apply_button is None:
+
+            raise Exception(
+                "Apply button not found"
+            )
 
 
 
@@ -150,49 +185,90 @@ def get_market_turnover(stock_code):
 
 
 
+        # -------------------------
+        # Find stock row
+        # -------------------------
+
         rows = driver.find_elements(
-            "css selector",
+            By.CSS_SELECTOR,
             "table.table_equities tr.datarow"
         )
-
 
 
         for row in rows:
 
 
             cells = row.find_elements(
-                "tag name",
+                By.TAG_NAME,
                 "td"
             )
 
 
-            if cells[0].text.strip() == stock_code:
+            if len(cells) >= 4:
 
 
-                return {
+                code = cells[0].text.strip()
 
-                    "Code":
-                    cells[0].text.strip(),
 
-                    "Name":
-                    cells[1].text.strip(),
+                if code == stock_code:
 
-                    "Price":
-                    cells[2].text.replace(
-                        "\n",
-                        " "
-                    ),
 
-                    "Turnover":
-                    convert_turnover(
-                        cells[3].text.strip()
-                    )
-                }
+                    return {
+
+                        "Code": code,
+
+                        "Name":
+                        cells[1].text.strip(),
+
+                        "Price":
+                        cells[2]
+                        .text
+                        .replace(
+                            "\n",
+                            " "
+                        ),
+
+                        "Turnover":
+                        convert_turnover(
+                            cells[3].text.strip()
+                        )
+                    }
+
 
 
         return None
 
 
+
     finally:
 
         driver.quit()
+
+
+
+# -------------------------
+# Local test
+# -------------------------
+
+if __name__ == "__main__":
+
+
+    print("MEITU:")
+
+    print(
+        get_market_turnover(
+            "1357"
+        )
+    )
+
+
+    print()
+
+
+    print("YOFC:")
+
+    print(
+        get_market_turnover(
+            "6869"
+        )
+    )
