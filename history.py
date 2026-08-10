@@ -6,7 +6,6 @@ def save_history(data):
 
     file = "history.csv"
 
-
     if os.path.exists(file):
 
         old_data = pd.read_csv(file)
@@ -20,6 +19,16 @@ def save_history(data):
 
         combined = data
 
+    combined = combined.drop_duplicates(
+        subset=[
+            "Code",
+            "Name",
+            "Turnover (SH)",
+            "Turnover ($)",
+            "Price",
+            "Date"
+        ]
+    )
 
     combined.to_csv(
         file,
