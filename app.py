@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
 
-from hkex_scraper import get_short_sell_data
 from market_scraper import get_market_turnover
+from short_sell_scraper import get_short_sell_data
 from history import save_history
 
 
@@ -21,146 +20,177 @@ selected = st.selectbox(
     list(stocks.keys())
 )
 
+
 code = stocks[selected]
 
 
 if st.button("Get Data"):
 
-    # ==========================
-    # Short selling data
-    # ==========================
 
-    short_df = get_short_sell_data()
-
-    short_row_df = short_df[
-        short_df["Code"] == code
-    ]
-
-    if len(short_row_df) == 0:
-
-        st.error("No short selling data found.")
-
-        st.stop()
-
-    short_row = short_row_df.iloc[0]
-
-    short_turnover = float(
-        short_row["Turnover ($)"]
-    )
-
-    short_turnover_sh = int(
-        short_row["Turnover (SH)"]
-    )
-
-    short_price = float(
-        short_row["Price"]
-    )
-
-    stock_name = short_row["Name"]
-
-
-    # ==========================
-    # Market data
-    # ==========================
+    # ========================
+    # Market Data
+    # ========================
 
     market = get_market_turnover(code)
 
+
     if market is None:
 
-        st.error("No market turnover data found.")
+        st.error(
+            "No market turnover data found."
+        )
 
         st.stop()
 
-    total_turnover = float(
-        market["Turnover"]
+
+    total_turnover = market["Turnover"]
+
+
+
+    # ========================
+    # Extract Price
+    # ========================
+
+    price = float(
+        market["Price"]
+        .split()[0]
+        .replace(
+            "HK$",
+            ""
+        )
     )
 
-    market_price_full = market["Price"]
-
-    market_price = str(
-        market_price_full
-    ).split()[0]
 
 
-    # ==========================
-    # Short selling ratio
-    # ==========================
+    # ========================
+    # Short Selling Data
+    # ========================
 
-    if total_turnover > 0:
+    short_df = get_short_sell_data()
 
-        short_ratio = (
-            short_turnover /
-            total_turnover *
-            100
+
+    short_row = short_df[
+        short_df["Code"] == code
+    ]
+
+
+
+    if len(short_row) > 0:
+
+
+        short_shares = float(
+            short_row["Turnover (SH)"]
+            .iloc[0]
         )
+
+
+        short_turnover = float(
+            short_row["Turnover ($)"]
+            .iloc[0]
+        )
+
 
     else:
 
-        short_ratio = 0
+        short_shares = 0
+
+        short_turnover = 0
 
 
-    # ==========================
-    # Save historical data
-    # ==========================
 
-    history_data = pd.DataFrame(
-        [
+    # ========================
+    # Share-based Short Ratio
+    # ========================
+
+    total_shares = (
+        total_turnover /
+        price
+    )
+
+
+    short_ratio = (
+        short_shares /
+        total_shares *
+        100
+    )
+
+
+    short_ratio = round(
+        short_ratio,
+        2
+    )
+
+
+
+    # ========================
+    # Save History
+    # ========================
+
+    if len(short_row) > 0:
+        history_data = pd.DataFrame(
             {
-                "Code": code,
-                "Name": stock_name,
-                "Turnover (SH)": short_turnover_sh,
-                "Turnover ($)": int(short_turnover),
-                "Price": short_price,
-                "Date": str(date.today())
+                "Code": [int(code)],
+
+                "Name": [
+                    market["Name"]
+                ],
+
+                "Date": [
+                    pd.Timestamp.today()
+                    .strftime("%Y-%m-%d")
+                ],
+
+                "Total Shares": [
+                    int(total_shares)
+                ],
+
+                "Short Shares": [
+                    int(short_shares)
+                ],
+
+                "Short Selling Turnover": [
+                    int(short_turnover)
+                ],
+
+                "Short Selling Ratio": [
+                    short_ratio
+                ]
             }
-        ]
-    )
-
-    save_history(
-        history_data
-    )
+        )
 
 
-    # ==========================
-    # Current data display
-    # ==========================
+        save_history(
+            history_data
+        )
+
+
+
+    # ========================
+    # Main Display
+    # ========================
+
 
     st.subheader(
         selected
+    )
 
-    )
-    st.caption(
-        f"Data Date: {date.today()}"
-    )
 
     col1, col2, col3 = st.columns(3)
+
 
 
     with col1:
 
         st.metric(
             "Market Price",
-            market_price
+            market["Price"]
         )
-
 
     with col2:
 
-        if total_turnover >= 1_000_000_000:
-
-            turnover_display = (
-                f"HK${total_turnover / 1_000_000_000:.2f}B"
-            )
-
-        else:
-
-            turnover_display = (
-                f"HK${total_turnover / 1_000_000:.2f}M"
-            )
-
         st.metric(
-            "Total Turnover",
-            turnover_display
+            "Total Shares",
+            f"{total_shares:,.0f}"
         )
 
 
@@ -172,98 +202,107 @@ if st.button("Get Data"):
         )
 
 
+
     st.divider()
+
 
 
     col4, col5 = st.columns(2)
 
 
+
     with col4:
 
         st.metric(
-            "Short Selling Turnover",
-            f"HK${short_turnover / 1_000_000:.2f}M"
+            "Short Selling Shares",
+            f"{short_shares:,.0f}"
         )
 
 
     with col5:
 
         st.metric(
-            "Short Selling Price",
-            f"HK${short_price:.2f}"
+            "Short Selling Turnover",
+            f"HK${short_turnover / 1e6:.2f}M"
         )
 
 
-    # ==========================
-    # Historical section
-    # ==========================
+
+    st.divider()
+
+
+
+    # ========================
+    # Historical Data
+    # ========================
+
 
     st.subheader(
         "Historical Short Selling Data"
     )
 
 
-    history = pd.read_csv(
-        "history.csv"
-    )
+    try:
 
 
-    stock_history = history[
-        history["Code"].astype(str) == code
-    ].copy()
+        history = pd.read_csv(
+            "history.csv"
+        )
 
 
-    stock_history = stock_history.drop_duplicates(
-        subset=[
-            "Code",
-            "Name",
-            "Turnover (SH)",
-            "Turnover ($)",
-            "Price",
-            "Date"
+        stock_history = history[
+            history["Code"] == int(code)
         ]
-    )
 
 
-    stock_history = stock_history.sort_values(
-        "Date"
-    )
-
-
-    st.dataframe(
-        stock_history.reset_index(drop=True),
-        hide_index=True,
-        use_container_width=True
-    )
-
-
-    # ==========================
-    # Historical turnover chart
-    # ==========================
-
-    if len(stock_history) > 1:
-
-        chart_data = stock_history[
-            [
-                "Date",
-                "Turnover ($)"
-            ]
-        ].copy()
-
-        chart_data["Date"] = pd.to_datetime(
-            chart_data["Date"]
+        stock_history = (
+            stock_history
+            .sort_values(
+                "Date"
+            )
         )
 
-        chart_data = chart_data.set_index(
-            "Date"
+
+        st.dataframe(
+            stock_history,
+            hide_index=True
         )
 
-        st.line_chart(
-            chart_data
-        )
 
-    else:
+
+        if len(stock_history) >= 2:
+
+
+            st.subheader(
+                "Short Selling Ratio Trend"
+            )
+
+
+            chart_data = (
+                stock_history
+                .set_index("Date")
+                [
+                    "Short Selling Ratio"
+                ]
+            )
+
+
+            st.line_chart(
+                chart_data
+            )
+
+
+        else:
+
+
+            st.info(
+                "More historical data points are needed before a trend chart can be displayed."
+            )
+
+
+    except FileNotFoundError:
+
 
         st.info(
-            "More historical data points are needed before a trend chart can be displayed."
+            "No historical data available yet."
         )
