@@ -269,11 +269,36 @@ if st.button("Get Data"):
             )
         )
 
-
         st.dataframe(
             stock_history,
             hide_index=True,
-            use_container_width=True
+            use_container_width=True,
+            column_config={
+                "Code": st.column_config.NumberColumn(
+                    "Code",
+                    format="%d"
+                ),
+
+                "Total Shares": st.column_config.NumberColumn(
+                    "Total Shares",
+                    format="%,d"
+                ),
+
+                "Short Shares": st.column_config.NumberColumn(
+                    "Short Shares",
+                    format="%,d"
+                ),
+
+                "Short Selling Turnover": st.column_config.NumberColumn(
+                    "Short Selling Turnover",
+                    format="HK$%,d"
+                ),
+
+                "Short Selling Ratio": st.column_config.NumberColumn(
+                    "Short Selling Ratio",
+                    format="%.2f%%"
+                )
+            }
         )
 
 
